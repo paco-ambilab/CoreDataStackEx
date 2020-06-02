@@ -1,0 +1,6 @@
+framework module CoreDataStackEx {
+  umbrella header "CoreDataStackEx-umbrella.h"
+
+  export *
+  module * { export * }
+}
