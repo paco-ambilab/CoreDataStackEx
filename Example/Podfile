@@ -1,0 +1,11 @@
+use_frameworks!
+
+target 'CoreDataStackEx_Example' do
+  pod 'CoreDataStackEx', :path => '../'
+
+  target 'CoreDataStackEx_Tests' do
+    inherit! :search_paths
+
+    
+  end
+end
