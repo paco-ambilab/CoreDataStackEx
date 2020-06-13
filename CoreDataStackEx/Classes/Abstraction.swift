@@ -19,40 +19,13 @@ public enum CDError: Error {
     case systemError(_ error: Error?)
 }
 
-//class CoreDataConnection {
-//
-//}
-//
-//class Mutation {
-//
-//    func update(context: CDContext) {}
-//    func create(context: CDContext) {}
-//    func delete(context: CDContext) {}
-//}
-//
-//class Immutation {
-//
-//    func fetch(context: CDContext) {}
-//}
-
-
-//class Storage {
-//
-//    var m: Mutation! = nil
-//    var i: Immutation! = nil
-//
-//    func fetch(context: CDContext) {}
-//
-//    func update(context: CDContext) {}
-//    func create(context: CDContext) {}
-//    func delete(context: CDContext) {}
-//}
-
 class CoreDataStack {
     
     private(set) var readOnlyContext: NSManagedObjectContext!
         
     private(set) var readWriteContext: NSManagedObjectContext!
+    
+    private(set) var readWriteTransactionContext: NSManagedObjectContext!
     
     private var model: NSManagedObjectModel!
     
@@ -119,33 +92,44 @@ class CoreDataStack {
 
         self.readWriteContext = readWriteContext
         
+        let readWriteTransactionContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+        readWriteTransactionContext.parent = readOnlyContext
+
+        self.readWriteTransactionContext = readWriteTransactionContext
+        
         // 3. Add notification for data changes
         
         NotificationCenter.default.addObserver(self, selector: #selector(managedObjectContextDidSave(_:)), name: NSNotification.Name.NSManagedObjectContextDidSave, object: nil)
     }
     
-    public func deleteAllFromDatabase() -> Error? {
-        var retError: Error?
-//        return inTransaction({ context in
-//            var shouldCommit = false
-//            for entity in model.entities {
-//                let fetchRequest = NSFetchRequest<NSFetchRequestResult>()
-//                fetchRequest.entity = entity
-//                fetchRequest.includesSubentities = false
-//                do {
-//                   let result = try context.fetch(fetchRequest)
-//                    for obj in result {
-//                        context.delete(obj as! NSManagedObject)
-//                    }
-//                    shouldCommit = true
-//                } catch {
-//                    #warning("this error has no handling")
-//                    shouldCommit = false
-//                }
-//            }
-//            return shouldCommit
-//        })
-        return retError
+    public func deleteAllDataFromCoreData(completion: @escaping ((CDError?) -> Void)) {
+        let transaction = makeTransaction()
+        transaction.transactionBlock { [weak self] context, observer in
+            guard let weakSelf = self else {
+                observer.onAbort(error: nil)
+                return
+            }
+            for entity in weakSelf.model.entities {
+                let fetchRequest = NSFetchRequest<NSManagedObject>()
+                fetchRequest.entity = entity
+                fetchRequest.includesSubentities = false
+                let fetchResult = context.fetch(fetchRequest: fetchRequest)
+                guard fetchResult.error == nil else {
+                    observer.onAbort(error: fetchResult.error)
+                    return
+                }
+                for obj in fetchResult.object {
+                    let error = context.delete(byObject: obj)
+                    guard error == nil else {
+                        observer.onAbort(error: error)
+                        return
+                    }
+                }
+            }
+            observer.onSuccess()
+        }
+        
+        transaction.run(completion: completion)
     }
     
     public func removeDatabaseFiles() {
@@ -189,6 +173,13 @@ class CoreDataStack {
         }
     }
     
+    func makeRequest() -> CDRequset {
+        return CDContext(service: self, isTransaction: false)
+    }
+    
+    func makeTransaction() -> CDTransaction {
+        return CDTransaction(context: CDContext(service: self, isTransaction: true))
+    }
     
 }
 
@@ -197,19 +188,16 @@ class FetchResult<MObject> {
     var error: CDError?
 }
 
+typealias CDRequset = CDContext
+
 class CDContext {
     
     weak var service: CoreDataStack?
     
-//    var contextForRead: NSManagedObjectContext
-    
     let isTransaction: Bool
     
-//    var context: NSManagedObjectContext
-    
-    private init(service: CoreDataStack, isTransaction: Bool = false) {
+    fileprivate init(service: CoreDataStack, isTransaction: Bool = false) {
         self.service = service
-        
         self.isTransaction = isTransaction
     }
     
@@ -289,7 +277,7 @@ class CDContext {
             return fetchResult
         }
         
-        guard let contextWritable = service?.readWriteContext else {
+        guard let contextWritable = (!isTransaction) ? service?.readWriteContext: service?.readWriteTransactionContext else {
             fetchResult.error = .invalid
             return fetchResult
         }
@@ -312,28 +300,89 @@ class CDContext {
         return fetchResult
     }
     
-    public func update<MObject: NSManagedObject>(byObject object: MObject, updateBlock: ((MObject, CDContext) -> Void)) -> FetchResult<MObject> { return nil! }
-    
-    public func delete<MObject: NSManagedObject>(byObject object: MObject,
-                                                 dedicatedContext: CDContext? = nil) -> CDError? { return nil! }
-}
-
-class CoreDataService {
-    
-    
-}
-
-class TransactionResult {
-    
-    func onSuccess() {
+    public func update<MObject: NSManagedObject>(byObject object: MObject, updateBlock: ((MObject, CDContext) -> Void)) -> FetchResult<MObject> {
+        var fetchResult = FetchResult<MObject>()
+        guard let contextReadable = service?.readOnlyContext else {
+            fetchResult.error = .invalid
+            return fetchResult
+        }
         
+        guard let contextWritable = (!isTransaction) ? service?.readWriteContext: service?.readWriteTransactionContext else {
+            fetchResult.error = .invalid
+            return fetchResult
+        }
+        
+        contextWritable.performAndWait {
+            let object = contextWritable.object(with: object.objectID) as! MObject
+            updateBlock(object, self)
+            fetchResult.object.append(object)
+            if !isTransaction {
+                do {
+                    try contextWritable.save()
+                    contextWritable.refresh(contextWritable.object(with: object.objectID), mergeChanges: true)
+                } catch {
+                    fetchResult.error = .systemError(error)
+                    contextWritable.rollback()
+                }
+                fetchResult = fetch(byObject: fetchResult.object.first!, inContext: contextReadable)
+            }
+        }
+        return fetchResult
     }
     
-    func onAbort(error: Error?) {
+    public func delete<MObject: NSManagedObject>(byObject object: MObject) -> CDError? {
+        var retError: CDError?
+        guard let contextWritable = (!isTransaction) ? service?.readWriteContext: service?.readWriteTransactionContext else {
+            retError = .invalid
+            return retError
+        }
         
+        contextWritable.performAndWait {
+            contextWritable.delete(contextWritable.object(with: object.objectID) as! MObject)
+            if !isTransaction {
+                do {
+                    try contextWritable.save()
+                    contextWritable.refresh(contextWritable.object(with: object.objectID), mergeChanges: true)
+                } catch {
+                    retError = .systemError(error)
+                    contextWritable.rollback()
+                }
+            }
+        }
+        return retError
+    }
+    
+    public func deleteAll<MObject: NSManagedObject>(type: MObject.Type) -> Error? {
+        var retError: CDError?
+        guard let contextWritable = (!isTransaction) ? service?.readWriteContext: service?.readWriteTransactionContext else {
+            retError = .invalid
+            return retError
+        }
+        
+        let fetchResult = fetchAll(type: MObject.self)
+        
+        guard fetchResult.error == nil else {
+            return fetchResult.error
+        }
+        
+        contextWritable.performAndWait {
+            
+            for object in fetchResult.object {
+                contextWritable.delete(contextWritable.object(with: object.objectID))
+            }
+            if !isTransaction {
+                do {
+                    try contextWritable.save()
+                    contextWritable.refreshAllObjects()
+                } catch {
+                    retError = .systemError(error)
+                    contextWritable.rollback()
+                }
+            }
+        }
+        return retError
     }
 }
-
 
 class CDServiceConfiguration {
     
@@ -345,21 +394,112 @@ class CDServiceConfiguration {
     
 }
 
+protocol CDTransactionResultObserver {
+    
+    func onSuccess()
+    
+    func onAbort(error: Error?)
+}
 
-class Transaction {
+class CDTransaction: CDTransactionResultObserver {
     
     let lock = NSLock()
-    var isComplete: Bool = false
-    var result: TransactionResult = TransactionResult()
-    var block: ((CDContext, TransactionResult) -> Void)?
     
-    func transaction(_ block: @escaping ((CDContext, TransactionResult) -> Void)) {
-        
+    var isComplete: Bool = false
+
+    var retainSelf: CDTransaction?
+    
+    var block: ((CDContext, CDTransactionResultObserver) -> Void)?
+    
+    var completion: ((CDError?) -> Void)?
+    
+    let context: CDContext
+    
+    init(context: CDContext) {
+        self.context = context
     }
     
-    func run(completion: ((CDError?) -> Void)) {
-        CDServiceConfiguration.shared.dispatchQueue.async {
-            
+    func transactionBlock(_ block: @escaping ((CDContext, CDTransactionResultObserver) -> Void)) {
+        self.block = block
+    }
+    
+    func run(completion: @escaping ((CDError?) -> Void)) {
+        retainSelf = self
+        self.completion = completion
+        CDServiceConfiguration.shared.dispatchQueue.async { [weak self] in
+            guard let weakSelf = self else {
+                completion(.invalid)
+                return
+            }
+            weakSelf.block?(weakSelf.context, weakSelf)
+        }
+    }
+    
+    // CDTransactionResultObservable
+    func onSuccess() {
+        var retError: CDError?
+        
+        guard isComplete == false else {
+            fatalError("CDTransaction onSuccess() invokes twice.")
+        }
+        
+        isComplete = true
+        
+        let completionRunInMainThread = { (block: @escaping (()-> Void)) in
+            DispatchQueue.main.async { [weak self] in
+                block()
+                self?.retainSelf = nil
+            }
+        }
+        
+        guard let contextWritable = context.service?.readWriteTransactionContext else {
+            completionRunInMainThread { [weak self] in
+                self?.completion?(CDError.invalid)
+            }
+            return
+        }
+        
+        contextWritable.performAndWait {
+            do {
+                try contextWritable.save()
+                contextWritable.refreshAllObjects()
+            } catch {
+                retError = .systemError(error)
+                contextWritable.rollback()
+            }
+        }
+        completionRunInMainThread { [weak self] in
+            self?.completion?(retError)
+        }
+    }
+    
+    func onAbort(error: Error?) {
+        guard isComplete == false else {
+            fatalError("CDTransaction onAbort(error:) invokes twice.")
+        }
+        
+        isComplete = true
+        
+        let completionRunInMainThread = { (block: @escaping (()-> Void)) in
+            DispatchQueue.main.async { [weak self] in
+                block()
+                self?.retainSelf = nil
+            }
+        }
+        
+        guard let contextWritable = context.service?.readWriteTransactionContext else {
+            completionRunInMainThread { [weak self] in
+                self?.completion?(CDError.invalid)
+            }
+            return
+        }
+        
+        contextWritable.performAndWait {
+            contextWritable.rollback()
+            contextWritable.refreshAllObjects()
+        }
+        completionRunInMainThread { [weak self] in
+            self?.completion?(CDError.customError(error))
         }
     }
     
