@@ -25,12 +25,6 @@ public class CoreDataStackEx {
     
     private var storeCoordinator: NSPersistentStoreCoordinator!
     
-    static let shared: CoreDataStackEx = {
-        let obj = CoreDataStackEx(configuration: CoreDataStackConfig(storeType: NSInMemoryStoreType, modelName: "AmbiClimate", accessGroup: nil))
-        try! obj.prepare()
-        return obj
-    }()
-    
     required public init(configuration: CoreDataStackConfig) {
         self.configuration = configuration
     }

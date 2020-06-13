@@ -19,8 +19,8 @@ public enum CDError: Error {
     case systemError(_ error: Error?)
 }
 
-class CoreDataStack {
-    
+public class CoreDataStack {
+        
     private(set) var readOnlyContext: NSManagedObjectContext!
         
     private(set) var readWriteContext: NSManagedObjectContext!
@@ -33,7 +33,7 @@ class CoreDataStack {
     
     let configuration: CoreDataStackConfig
     
-    init(configuration: CoreDataStackConfig) {
+    public init(configuration: CoreDataStackConfig) {
         self.configuration = configuration
     }
     
@@ -57,8 +57,7 @@ class CoreDataStack {
     public func prepare() throws {
         
         // 1. Get model from file, xxxxxx.momd
-        let bundle = Bundle(for: type(of: self))
-        guard let modelURL = bundle.url(forResource: configuration.modelName, withExtension: "momd") else {
+        guard let modelURL = configuration.bundle.url(forResource: configuration.modelName, withExtension: "momd") else {
             throw NSError(domain: "CoreDataService", code: CoreDataError.momdFileNotFound.rawValue, userInfo: ["momdFileName": configuration.modelName])
         }
         
@@ -173,24 +172,24 @@ class CoreDataStack {
         }
     }
     
-    func makeRequest() -> CDRequset {
+    public func makeRequest() -> CDRequset {
         return CDContext(service: self, isTransaction: false)
     }
     
-    func makeTransaction() -> CDTransaction {
+    public func makeTransaction() -> CDTransaction {
         return CDTransaction(context: CDContext(service: self, isTransaction: true))
     }
     
 }
 
-class FetchResult<MObject> {
-    var object: [MObject] = []
-    var error: CDError?
+public class FetchResult<MObject> {
+    public var object: [MObject] = []
+    public var error: CDError?
 }
 
-typealias CDRequset = CDContext
+public typealias CDRequset = CDContext
 
-class CDContext {
+public class CDContext {
     
     weak var service: CoreDataStack?
     
@@ -359,7 +358,7 @@ class CDContext {
             return retError
         }
         
-        let fetchResult = fetchAll(type: MObject.self)
+        let fetchResult = fetchAll(type: type)
         
         guard fetchResult.error == nil else {
             return fetchResult.error
@@ -394,14 +393,14 @@ class CDServiceConfiguration {
     
 }
 
-protocol CDTransactionResultObserver {
+public protocol CDTransactionResultObserver {
     
     func onSuccess()
     
     func onAbort(error: Error?)
 }
 
-class CDTransaction: CDTransactionResultObserver {
+public class CDTransaction: CDTransactionResultObserver {
     
     let lock = NSLock()
     
@@ -419,11 +418,11 @@ class CDTransaction: CDTransactionResultObserver {
         self.context = context
     }
     
-    func transactionBlock(_ block: @escaping ((CDContext, CDTransactionResultObserver) -> Void)) {
+    public func transactionBlock(_ block: @escaping ((CDContext, CDTransactionResultObserver) -> Void)) {
         self.block = block
     }
     
-    func run(completion: @escaping ((CDError?) -> Void)) {
+    public func run(completion: @escaping ((CDError?) -> Void)) {
         retainSelf = self
         self.completion = completion
         CDServiceConfiguration.shared.dispatchQueue.async { [weak self] in
@@ -436,7 +435,7 @@ class CDTransaction: CDTransactionResultObserver {
     }
     
     // CDTransactionResultObservable
-    func onSuccess() {
+    public func onSuccess() {
         var retError: CDError?
         
         guard isComplete == false else {
@@ -473,7 +472,7 @@ class CDTransaction: CDTransactionResultObserver {
         }
     }
     
-    func onAbort(error: Error?) {
+    public  func onAbort(error: Error?) {
         guard isComplete == false else {
             fatalError("CDTransaction onAbort(error:) invokes twice.")
         }
