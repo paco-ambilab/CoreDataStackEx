@@ -4,7 +4,6 @@ import CoreData
 @testable import CoreDataStackEx_Example
 
 class Tests: XCTestCase {
-    
     var coreDataService: CoreDataStack!
     
     override func setUp() {
@@ -29,6 +28,12 @@ class Tests: XCTestCase {
         print(createResult.object.first)
         if createResult.error != nil {
             XCTAssertTrue(false)
+        }
+    }
+    
+    func testPerformance() {
+        self.measure {
+            testTransaction()
         }
     }
     
