@@ -9,7 +9,7 @@ EXTERNAL SOURCES:
     :path: "../"
 
 SPEC CHECKSUMS:
-  CoreDataStackEx: c6756e6113d7aa1960ca3c961c50d2c587974244
+  CoreDataStackEx: 9d7f2e3c7f6cec04ca8ab618dfd985fede5f7d82
 
 PODFILE CHECKSUM: 86eac7a08fb4d78b695f7104f73fc3d157fb9f8b
 
