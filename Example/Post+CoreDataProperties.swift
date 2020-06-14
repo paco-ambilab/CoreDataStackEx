@@ -2,7 +2,7 @@
 //  Post+CoreDataProperties.swift
 //  
 //
-//  Created by Pakho Yeung on 6/13/20.
+//  Created by Pakho Yeung on 6/14/20.
 //
 //
 
@@ -16,9 +16,27 @@ extension Post {
         return NSFetchRequest<Post>(entityName: "Post")
     }
 
-    @NSManaged public var desc: String?
     @NSManaged public var create_data: Date?
-    @NSManaged public var viewers: User?
-    @NSManaged public var owners: User?
+    @NSManaged public var desc: String?
+    @NSManaged public var id: String?
+    @NSManaged public var owner: User?
+    @NSManaged public var viewers: NSSet?
+
+}
+
+// MARK: Generated accessors for viewers
+extension Post {
+
+    @objc(addViewersObject:)
+    @NSManaged public func addToViewers(_ value: User)
+
+    @objc(removeViewersObject:)
+    @NSManaged public func removeFromViewers(_ value: User)
+
+    @objc(addViewers:)
+    @NSManaged public func addToViewers(_ values: NSSet)
+
+    @objc(removeViewers:)
+    @NSManaged public func removeFromViewers(_ values: NSSet)
 
 }

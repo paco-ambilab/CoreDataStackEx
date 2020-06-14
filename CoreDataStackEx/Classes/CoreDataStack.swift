@@ -8,7 +8,14 @@
 import Foundation
 import CoreData
 
+enum CoreDataError: Int {
+    case momdFileNotFound
+    case momdFileLoadFailure
+}
+
 public enum CDError: Error {
+    case momdFileNotFound
+    case momdFileLoadFailure
     case initError
     case invalid
     case fetchError
@@ -24,6 +31,12 @@ public class CoreDataStack {
     private(set) var readOnlyContext: NSManagedObjectContext!
         
     private(set) var readWriteContext: NSManagedObjectContext!
+    
+    fileprivate func makeReadWriteContext() -> NSManagedObjectContext {
+        let readWriteContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+        readWriteContext.parent = readOnlyContext
+        return readWriteContext
+    }
     
     private(set) var readWriteTransactionContext: NSManagedObjectContext!
     
@@ -71,7 +84,7 @@ public class CoreDataStack {
         let storeCoordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
         
         do {
-            try storeCoordinator.addPersistentStore(ofType: configuration.persistentStoreType,
+            try storeCoordinator.addPersistentStore(ofType: configuration.storeType.string(),
             configurationName: nil,
             at: getFilePathForSqlite(),
             options: [NSMigratePersistentStoresAutomaticallyOption: true, NSInferMappingModelAutomaticallyOption: true])
@@ -276,7 +289,7 @@ public class CDContext {
             return fetchResult
         }
         
-        guard let contextWritable = (!isTransaction) ? service?.readWriteContext: service?.readWriteTransactionContext else {
+        guard let contextWritable = (!isTransaction) ? service?.readWriteContext : service?.readWriteTransactionContext else {
             fetchResult.error = .invalid
             return fetchResult
         }
