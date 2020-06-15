@@ -2,7 +2,7 @@
 //  User+CoreDataProperties.swift
 //  
 //
-//  Created by Pakho Yeung on 6/14/20.
+//  Created by Pakho Yeung on 6/16/20.
 //
 //
 
@@ -17,8 +17,8 @@ extension User {
     }
 
     @NSManaged public var email: String?
-    @NSManaged public var name: String?
     @NSManaged public var id: String?
+    @NSManaged public var name: String?
     @NSManaged public var owned_posts: NSSet?
     @NSManaged public var viewed_posts: NSSet?
 

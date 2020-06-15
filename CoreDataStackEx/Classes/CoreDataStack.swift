@@ -431,8 +431,9 @@ public class CDTransaction: CDTransactionResultObserver {
         self.context = context
     }
     
-    public func transactionBlock(_ block: @escaping ((CDContext, CDTransactionResultObserver) -> Void)) {
+    @discardableResult public func transactionBlock(_ block: @escaping ((CDContext, CDTransactionResultObserver) -> Void)) -> CDTransaction {
         self.block = block
+        return self
     }
     
     public func run(completion: @escaping ((CDError?) -> Void)) {

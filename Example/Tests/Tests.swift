@@ -1,7 +1,6 @@
 import XCTest
 import CoreDataStackEx
 import CoreData
-@testable import CoreDataStackEx_Example
 
 class Tests: XCTestCase {
     
@@ -15,9 +14,12 @@ class Tests: XCTestCase {
         if !Tests.connected {
             Tests.connected = true
             
+            let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] as NSString
+            NSLog("Document Path: %@", documentsPath)
+            
             coreDataService = {
                 let bundle = Bundle(for: type(of: self))
-                let instance = CoreDataStack(configuration: CoreDataStackConfig(storeType: .memory, bundle: bundle, modelName: "testmodel", accessGroup: nil))
+                let instance = CoreDataStack(configuration: CoreDataStackConfig(storeType: .memory, bundle: bundle, modelName: "_testmodel", accessGroup: nil))
                 try! instance.prepare()
                 Tests.retainSelf = instance
                 return instance
@@ -40,7 +42,7 @@ class Tests: XCTestCase {
             user.email = "alex@gmail.com"
             user.name = "alex"
         }
-        print(createResult0001.object.first)
+        print(createResult0001.object.first ?? "")
         if createResult0001.error != nil {
             XCTAssertTrue(false)
         }
@@ -53,7 +55,7 @@ class Tests: XCTestCase {
             user.email = "alex@gmail.com"
             user.name = "alex"
         }
-        print(createResult0002.object.first)
+        print(createResult0002.object.first ?? "")
         if createResult0002.error != nil {
             XCTAssertTrue(false)
         }
